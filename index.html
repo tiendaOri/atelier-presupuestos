@@ -1094,7 +1094,9 @@ function renderBudget(){
       <tr><td>Otros gastos</td><td>${eur(T.extras)}</td></tr>${exRows}
       <tr class="sub"><td>Coste total</td><td>${eur(T.cost)}</td></tr>
       <tr class="gain"><td>Beneficio (${n1(st.margin)} % sobre costes)</td><td>${eur(T.profit)}</td></tr>
-      <tr class="sub"><td>Base imponible</td><td>${eur(T.base)}</td></tr></table>${catLine}`;
+      <tr class="sub"><td>Base imponible</td><td>${eur(T.base)}</td></tr></table>${catLine}
+    <div style="margin-top:14px"><button class="btn" data-act="pdf-internal">Descargar mis cuentas (PDF)</button>
+    <p class="small" style="margin:8px 0 0">Una hoja para ti con costes, gastos con su detalle y beneficio. No se la des al cliente.</p></div>`;
   if(!R.length){$('#shopTable').innerHTML='<p class="sub">Añade piezas en la pestaña Piezas y aquí aparecerá la lista.</p>';$('#cuts').innerHTML='<p class="sub">Todavía no hay cortes que mostrar.</p>';return}
   $('#shopTable').innerHTML=`<table class="tbl"><thead><tr><th>Material</th><th>Comprar</th><th>Aprovechamiento</th><th class="r">Precio</th><th class="r">Importe</th></tr></thead><tbody>`+
     R.map(x=>{
@@ -1265,6 +1267,116 @@ async function saveFile(name,blob){
   const u=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);
 }
+/* Hoja interna: las cuentas del trabajo (costes, gastos y beneficio). No es para el cliente. */
+function buildInternalPdf(){
+  const {jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4',compress:true});
+  doc.addFileToVFS('DMSerif.ttf',PDF_FONTS.serif);doc.addFont('DMSerif.ttf','DMSerif','normal');
+  doc.addFileToVFS('Jost-Regular.ttf',PDF_FONTS.reg);doc.addFont('Jost-Regular.ttf','Jost','normal');
+  doc.addFileToVFS('Jost-Medium.ttf',PDF_FONTS.med);doc.addFont('Jost-Medium.ttf','JostM','normal');
+  doc.setLineHeightFactor(1.3);
+  const T=LAST.T,R=LAST.R,st=S.settings,W=210,ML=27,MR=18,CW=W-ML-MR,RX=W-MR;
+  const RED=[184,56,28],INK=[38,30,28],MUT=[116,106,100],LINE=[226,218,212],DOT=[176,166,158],WHITE=[255,255,255];
+  const money=n=>fmtEs(n,2,2)+' €';
+  const font=(k,size,col)=>{doc.setFont(k==='serif'?'DMSerif':k==='m'?'JostM':'Jost','normal');doc.setFontSize(size);doc.setTextColor(...col)};
+  const label=(t,x,y,col,right)=>{
+    const U=t.toUpperCase();font('m',7.5,col||MUT);doc.setCharSpace(0);
+    const w=doc.getTextWidth(U)+0.5*(U.length-1);doc.setCharSpace(0.5);doc.text(U,right?x-w:x,y);doc.setCharSpace(0)};
+  const leader=(x1,x2,y)=>{if(x2-x1<4)return;doc.setDrawColor(...DOT);doc.setLineWidth(0.35);doc.setLineDashPattern([0.2,1.15],0);doc.line(x1,y,x2,y);doc.setLineDashPattern([],0)};
+  const rule=(y,col,w)=>{doc.setDrawColor(...(col||LINE));doc.setLineWidth(w||0.25);doc.line(ML,y,RX,y)};
+  let y=18;
+  const need=h=>{if(y+h>281){doc.addPage();y=18}};
+  const section=t=>{need(26);y+=3;label(t,ML,y,RED);y+=2;rule(y,RED,0.5);y+=5.5};
+  const P=S.project,c=S.company;
+  /* cabecera */
+  label('Documento interno · no entregar al cliente',ML,y+3,RED);
+  font('serif',14,INK);doc.text('Nº '+refOf(S.cur),RX,y+4,{align:'right'});
+  if(P.fecha){font('r',9.5,MUT);doc.text(pdfClean(fechaLarga()),RX,y+9.5,{align:'right'})}
+  y+=16;font('serif',26,INK);doc.text('Cuentas del trabajo',ML,y);y+=7;
+  const quien=[pdfClean(P.cliente),pdfClean(P.obra)].filter(Boolean).join('  ·  ');
+  if(quien){font('r',10.5,MUT);for(const ln of doc.splitTextToSize(quien,CW)){doc.text(ln,ML,y);y+=5}}
+  y+=1;rule(y);y+=6;
+  /* resumen en cuatro casillas */
+  const bw=(CW-3*4)/4,boxes=[['Coste total',T.cost,INK],['Beneficio',T.profit,RED],['Base imponible',T.base,INK],['Total con IVA',T.total,INK]];
+  boxes.forEach(([l,v,col],i)=>{
+    const x=ML+i*(bw+4);doc.setDrawColor(...LINE);doc.setLineWidth(0.3);doc.rect(x,y,bw,16);
+    label(l,x+3,y+5.5,MUT);let fs=14;const txt=money(v);font('serif',fs,col);while(doc.getTextWidth(txt)>bw-6&&fs>8){fs-=0.5;doc.setFontSize(fs)}
+    doc.text(txt,x+3,y+12.5)});
+  y+=16+3;
+  /* materiales */
+  section('Materiales · lo que se compra');
+  const mats=R.filter(x=>x.cost>0||x.buy>0);
+  if(!mats.length){font('r',10,MUT);doc.text('Todavía no hay materiales.',ML,y);y+=7}
+  else{
+    const cB=ML+62,cU=ML+110,cP=ML+137;
+    label('Material',ML,y);label('Comprar',cB,y);label('Aprov.',cU,y,MUT,true);label('Precio',cP,y,MUT,true);label('Importe',RX,y,MUT,true);y+=2.5;rule(y);y+=4.8;
+    mats.forEach(x=>{
+      const m=x.mat,pr=m.kind==='unit'?money(m.price)+'/'+pdfClean(m.unit):m.kind==='area'?money(m.price)+'/m²':money(m.price);
+      font('r',9.5,INK);const nl=doc.splitTextToSize(pdfClean(m.name),58),bl=doc.splitTextToSize(pdfClean(x.buyText),44);
+      const h=Math.max(nl.length,bl.length)*4.1;need(h+3);
+      font('r',9.5,INK);doc.text(nl,ML,y);doc.text(bl,cB,y);
+      font('r',9.5,MUT);doc.text(x.usage==null?'—':Math.round(x.usage*100)+' %',cU,y,{align:'right'});doc.text(pr,cP,y,{align:'right'});
+      font('m',9.5,INK);doc.text(money(x.cost),RX,y,{align:'right'});
+      y+=h-0.6;rule(y);y+=4.2});
+    font('m',10,INK);doc.text('Total materiales (coste)',ML,y);doc.text(money(T.mats),RX,y,{align:'right'});y+=5}
+  /* mano de obra */
+  section('Mano de obra');
+  const labs=S.labor.filter(x=>laborAmt(x)>0||(x.name||'').trim());
+  if(!labs.length){font('r',10,MUT);doc.text('Sin mano de obra.',ML,y);y+=7}
+  else{
+    labs.forEach(x=>{
+      const q=+x.qty||0,p=+x.price||0,u=x.mode==='u';
+      const det=u?n1(q)+' '+(q===1?'pieza':'piezas')+' × '+money(p):n1(q)+' h × '+money(p>0?p:st.rate)+'/h';
+      need(8);font('r',10,INK);const nl=doc.splitTextToSize(pdfClean(x.name)||'Sin nombre',70);doc.text(nl,ML,y);
+      font('r',9.5,MUT);doc.text(det,ML+74,y);font('m',10,INK);doc.text(money(laborAmt(x)),RX,y,{align:'right'});
+      y+=nl.length*4.2;rule(y-1.4);y+=3.1});
+    font('m',10,INK);doc.text('Total mano de obra (coste)',ML,y);doc.text(money(T.labor),RX,y,{align:'right'});y+=5}
+  /* otros gastos, con su tipo y su nota */
+  section('Otros gastos · detalle');
+  const exs=S.extras.filter(x=>(+x.amount||0)>0||(x.name||'').trim());
+  if(!exs.length){font('r',10,MUT);doc.text('Sin otros gastos.',ML,y);y+=7}
+  else{
+    exs.forEach(x=>{
+      const sub=[pdfClean(x.cat),pdfClean((x.note||'').trim())].filter(Boolean).join('  ·  ');
+      font('r',9,MUT);const sl=sub?doc.splitTextToSize(sub,CW-34):[];
+      need(8+sl.length*3.8);
+      font('r',10,INK);const nl=doc.splitTextToSize(pdfClean((x.name||'').trim())||'Sin nombre',CW-34);doc.text(nl,ML,y);
+      font('m',10,INK);doc.text(money(+x.amount||0),RX,y,{align:'right'});y+=nl.length*4.2;
+      if(sl.length){font('r',9,MUT);doc.text(sl,ML,y-0.4);y+=sl.length*3.8}
+      rule(y-1.4);y+=3.1});
+    const byCat={};exs.forEach(x=>{const v=+x.amount||0;if(v>0){const k=pdfClean(x.cat)||'Sin clasificar';byCat[k]=(byCat[k]||0)+v}});
+    if(Object.keys(byCat).length>1){font('r',9,MUT);const tl=doc.splitTextToSize('Por tipo: '+Object.keys(byCat).map(k=>k+' '+money(byCat[k])).join('  ·  '),CW);need(tl.length*4+2);doc.text(tl,ML,y);y+=tl.length*4+1.2}
+    font('m',10,INK);doc.text('Total otros gastos (coste)',ML,y);doc.text(money(T.extras),RX,y,{align:'right'});y+=5}
+  /* cuenta final */
+  need(54);section('Cuenta final');
+  const line=(l,v,col,big)=>{font(big?'m':'r',10.5,col||INK);const a=doc.getTextWidth(l);doc.text(l,ML,y);const t=money(v);font('m',10.5,col||INK);const b=doc.getTextWidth(t);doc.text(t,RX,y,{align:'right'});leader(ML+a+2,RX-b-2,y-0.6);y+=6.2};
+  line('Coste total (materiales + mano de obra + otros gastos)',T.cost,INK,true);
+  line('Beneficio ('+n1(st.margin)+' % sobre costes)',T.profit,RED,true);
+  rule(y-3.5,INK,0.4);line('Base imponible',T.base,INK,true);line('IVA ('+n1(st.iva)+' %)',T.iva,MUT);
+  doc.setDrawColor(...RED);doc.setLineWidth(0.6);doc.line(ML,y-2,RX,y-2);doc.setLineWidth(0.2);doc.line(ML,y-0.7,RX,y-0.7);
+  y+=5;label('Total con IVA',ML,y-0.5,RED);font('serif',22,RED);doc.text(money(T.total),RX,y+1,{align:'right'});y+=9;
+  /* lo que ve el cliente */
+  need(18);label('Lo que ve el cliente',ML,y,MUT);y+=5;
+  font('r',9.5,MUT);doc.text('Materiales '+money(T.cm)+'  ·  Mano de obra '+money(T.cl)+'  ·  Otros gastos '+money(T.ce),ML,y);y+=4.6;
+  font('r',8.5,MUT);doc.text('Son los costes con el margen aplicado. No ve tus costes, tu beneficio ni el detalle de los gastos.',ML,y);y+=5;
+  /* banda lateral y pie en todas las hojas */
+  const pages=doc.getNumberOfPages(),hoy=new Date().toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'});
+  for(let i=1;i<=pages;i++){
+    doc.setPage(i);doc.setFillColor(...RED);doc.rect(0,0,8,297,'F');doc.rect(10.2,0,0.5,297,'F');
+    font('r',8.5,MUT);doc.text('Generado el '+hoy,ML,289);
+    doc.text(pages>1?i+' / '+pages:'Solo para uso interno',RX,289,{align:'right'});
+  }
+  return doc;
+}
+async function downloadInternalPdf(){
+  if(!window.jspdf){toast('No se pudo cargar el generador de PDF. Comprueba la conexión y vuelve a intentarlo.');return}
+  try{
+    const doc=buildInternalPdf();
+    const name=('Cuentas internas '+refOf(S.cur)+' '+pdfClean(S.project.cliente||S.project.obra||'')).replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim().slice(0,90)+'.pdf';
+    await saveFile(name,doc.output('blob'));
+    toast('Hoja de cuentas lista');
+  }catch(e){if(e&&e.code==='declined')return;toast('No se pudo guardar la hoja de cuentas'+(e&&e.message?': '+e.message:''))}
+}
+
 async function downloadPdf(){
   const msg=$('#pdfMsg');msg.textContent='';
   if(!window.jspdf){msg.textContent='No se pudo cargar el generador de PDF. Comprueba la conexión y vuelve a intentarlo.';return}
@@ -1363,6 +1475,7 @@ document.addEventListener('click',e=>{
   else if(a==='dup')dupBudget(b.closest('.brow').dataset.id);
   else if(a==='del-budget'){const id=b.closest('.brow').dataset.id;armed(b,'¿Seguro?',()=>delBudget(id))}
   else if(a==='cond-reset'){S.project.cond=null;S.project.condShow=true;syncProject();touch();toast('Condiciones habituales')}
+  else if(a==='pdf-internal')downloadInternalPdf();
   else if(a==='pdf')downloadPdf();
   else if(a==='add-mat'){
     const m={id:uid(),name:'Material nuevo',kind:'board',price:0,L:2440,W:1220,t:16,grain:false};S.materials.push(m);

@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Atelier Presupuestos</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Jost:wght@400;500;600&display=swap">
+<title>Presupuestos</title>
+<style>/* Tipografías alojadas en esta misma web (no se piden a Google) */
+@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/Inter-400-700.woff2) format('woff2')}
+@font-face{font-family:'Jost';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/Jost-400-700.woff2) format('woff2')}
+</style>
 <style>
 /* Layout: misma estructura que la otra app (Guardados, Piezas, Presupuesto, Precios) con una piel más sobria: grafito cálido, bermellón como único acento, tipografía geométrica espaciada, filetes finos y esquinas casi rectas. */
 :root{
@@ -37,7 +40,8 @@ input[type=file]{height:auto;padding:8px}
 .top-in{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:12px}
 .brand{display:flex;align-items:center;gap:12px;font-family:var(--head);text-transform:uppercase;min-width:0;white-space:nowrap}
 .brand svg{flex:none;color:var(--accent)}
-.bn{font-size:20px;font-weight:600;letter-spacing:.28em}
+.bn{font-size:20px;font-weight:600;letter-spacing:.28em;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
+.bn.long{font-size:15px;letter-spacing:.1em}
 .bs{font-size:12px;font-weight:500;letter-spacing:.2em;color:var(--muted);padding-left:12px;border-left:1px solid var(--line)}
 .tot{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1;flex:none}
 .tot span{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:500}
@@ -141,7 +145,7 @@ svg.cut{width:100%;height:auto;display:block}
 @media (max-width:700px){input,select,textarea{font-size:16px;height:44px}textarea{height:auto}input[type=checkbox]{height:22px;width:22px}.btn{height:44px}.btn.sm{height:38px}.icon-btn{height:44px;width:44px}}
 @media (max-width:520px){.top-in{padding-block:8px}.brand{font-size:18px}.brand svg{width:22px;height:22px}.tot{padding:4px 10px}.tot span{display:none}.tot strong{font-size:22px}.tab{padding:9px 10px;font-size:17px}.panel{padding:14px}.quote{padding:16px}.q-head h2{font-size:26px}.f-mode{flex:1 1 100%}}
 
-/* piel Atelier: ajustes finos */
+/* ajustes finos de esta variante */
 .q-head h2{font-weight:500;letter-spacing:.16em;font-size:26px}
 .q-head{border-bottom:1px solid var(--ink)}
 .sum tr.tt td,.b-tot{font-weight:500}
@@ -168,7 +172,7 @@ svg.cut{width:100%;height:auto;display:block}
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Atelier">
+<meta name="apple-mobile-web-app-title" content="Presupuestos">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>:root{color-scheme:light dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 </head>
@@ -178,7 +182,7 @@ svg.cut{width:100%;height:auto;display:block}
     <div class="top-in">
       <div class="brand">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v18h18L4 3z"/><path d="M4 13h5M13 21v-5"/></svg>
-        <span class="bn">Atelier</span><span class="bs">Presupuestos</span>
+        <span class="bn" id="brandName">Presupuestos</span><span class="bs" id="brandSub" hidden>Presupuestos</span>
       </div>
       <div class="tot" aria-live="polite"><span>Total con IVA</span><strong id="hdrTotal">0,00 €</strong></div>
     </div>
@@ -879,7 +883,14 @@ function syncSettings(){
   const st=S.settings,c=S.company,sv=(id,v)=>{$(id).value=String(v).replace('.',',')};
   sv('#s-rate',st.rate);sv('#s-margin',st.margin);sv('#s-iva',st.iva);sv('#s-waste',st.waste);sv('#s-kerf',st.kerf);
   $('#c-name').value=c.name||'';$('#c-nif').value=c.nif||'';$('#c-phone').value=c.phone||'';$('#c-email').value=c.email||'';$('#c-notes').value=c.notes||'';
+  syncBrand();
   syncLogo();
+}
+function syncBrand(){
+  const n=(S.company.name||'').trim(),a=$('#brandName'),b=$('#brandSub');
+  if(a){a.textContent=n||'Presupuestos';a.classList.toggle('long',n.length>14)}
+  if(b)b.hidden=!n;
+  document.title=n?n+' · Presupuestos':'Presupuestos';
 }
 function syncLogo(){
   const img=$('#logoPrev'),c=S.company;
@@ -1272,7 +1283,7 @@ document.addEventListener('click',e=>{
 $('#tab-precios').addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='m-filter'){matFilter=t.value;renderMats();return}
-  if(t.dataset.c){S.company[t.dataset.c]=t.value;if(t.dataset.c==='notes'&&S.project.cond==null)$('#p-cond').value=t.value;touch();return}
+  if(t.dataset.c){S.company[t.dataset.c]=t.value;if(t.dataset.c==='name')syncBrand();if(t.dataset.c==='notes'&&S.project.cond==null)$('#p-cond').value=t.value;touch();return}
   if(t.dataset.s){S.settings[t.dataset.s]=Math.max(0,parseNum(t.value));touch();return}
   const row=t.closest('.mrow');if(!row||!t.dataset.m)return;
   const m=mat(row.dataset.id),k=t.dataset.m;if(!m)return;

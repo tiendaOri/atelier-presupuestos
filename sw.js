@@ -1,5 +1,5 @@
-const V = 'atelier-presupuestos-v1';
-const CORE = ['./', 'index.html', 'manifest.webmanifest', 'jspdf.umd.min.js', 'icon-192.png', 'icon-512.png', 'icon-180.png'];
+const V = 'presupuestos-v2';
+const CORE = ['./', 'index.html', 'manifest.webmanifest', 'jspdf.umd.min.js', 'icon-192.png', 'icon-512.png', 'icon-180.png', 'fonts/Inter-400-700.woff2', 'fonts/Jost-400-700.woff2'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
 });

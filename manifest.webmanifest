@@ -1,6 +1,6 @@
 {
-  "name": "Atelier Presupuestos",
-  "short_name": "Atelier",
+  "name": "Presupuestos",
+  "short_name": "Presupuestos",
   "description": "Presupuestos de carpintería: materiales, cortes, mano de obra y PDF para el cliente.",
   "lang": "es",
   "start_url": "./",

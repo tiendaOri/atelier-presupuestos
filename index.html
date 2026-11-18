@@ -91,6 +91,12 @@ section.tabpane{display:flex;flex-direction:column;gap:20px}
 .f-info.bad b{color:var(--warn);font-size:12px;line-height:1.25;white-space:normal;padding-block:2px}
 .mini{display:flex;gap:10px;align-items:flex-end;padding:10px 0;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .mini .f-name{flex:1 1 200px}.mini .f-dim{flex:0 0 112px}
+.mini .f-cat{flex:1 1 200px}.mini .f-wide{flex:1 1 100%}
+.sum tr.xrow td{font-size:13px;color:var(--muted);border-bottom:0;padding-block:2px 3px}
+.sum tr.xrow td:first-child{padding-left:16px}
+.xcat{display:inline-block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);border-radius:3px;padding:0 6px;margin-left:8px;color:var(--muted)}
+.xnote{font-size:12px;white-space:pre-wrap;opacity:.85;margin-top:1px}
+.xcats{margin:8px 0 0}
 .sublist{display:flex;flex-direction:column}
 .cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:28px}
 .cols2 h3{font-size:18px;margin-bottom:6px}
@@ -288,7 +294,7 @@ svg.cut{width:100%;height:auto;display:block}
       </div>
       <div>
         <h3>Otros gastos</h3>
-        <p class="small" style="margin:0 0 6px">Transporte, gestión de residuos, desplazamientos…</p>
+        <p class="small" style="margin:0 0 6px">Transporte, gestión de residuos, desplazamientos… El tipo y la nota son solo para ti: el cliente solo ve el total de otros gastos.</p>
         <div class="sublist" id="extraList"></div>
         <button class="btn" data-act="add-extra" style="margin-top:10px">+ Añadir gasto</button>
       </div>
@@ -419,6 +425,7 @@ const parseNum=(s,dec)=>{
   else if(c){t=t.split(',').length>2?t.replace(/,/g,''):t.replace(',','.')}
   else if(d&&!dec&&/^[1-9]\d{0,2}(\.\d{3})+$/.test(t)){t=t.replace(/\./g,'')}
   const n=parseFloat(t);return isFinite(n)?n:0};
+const EXTRA_CATS=['Transporte','Herrajes y accesorios','Acabados (pintura, barniz)','Subcontrata','Alquiler de maquinaria','Gestión de residuos','Desplazamientos','Otros'];
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 
 /* ---------- catálogo de materiales de carpintería ---------- */
@@ -539,7 +546,7 @@ function loadDB(){
   b.project.obra='Ejemplo: armario de dormitorio';b.example=true;
   b.lines=buildArmario({materials:db.materials},{name:'Armario',H:2400,W:1800,D:600,shelves:3,doors:2,body:'mel16',door:'mel16',back:'dm3',hinge:'bisagra',pull:'tirador',edge:'canto'});
   b.labor=[{id:uid(),name:'Fabricación y montaje',mode:'h',qty:16,price:0}];
-  b.extras=[{id:uid(),name:'Transporte',amount:40}];
+  b.extras=[{id:uid(),name:'Transporte',amount:40,cat:'Transporte',note:'Ejemplo: furgoneta del taller, ida y vuelta'}];
   db.budgets.push(b);db.cur=b.id;return db;
 }
 const S={}; /* copia de trabajo: ajustes globales + presupuesto abierto */
@@ -870,7 +877,9 @@ function renderSub(){
   $('#extraList').innerHTML=S.extras.map(x=>`<div class="mini" data-id="${x.id}" data-list="extras">
     <label class="f f-name"><span>Concepto</span><input data-k="name" value="${esc(x.name)}" placeholder="Ej: transporte"></label>
     <label class="f f-dim"><span>Importe (€)</span><input data-k="amount" inputmode="decimal" value="${x.amount||''}" placeholder="0"></label>
-    <button class="icon-btn" data-act="del-sub" aria-label="Eliminar" title="Eliminar">×</button></div>`).join('');
+    <button class="icon-btn" data-act="del-sub" aria-label="Eliminar" title="Eliminar">×</button>
+    <label class="f f-cat"><span>Tipo de gasto (solo para ti)</span><select data-k="cat"><option value=""${x.cat?'':' selected'}>Sin clasificar</option>${EXTRA_CATS.map(c=>`<option${x.cat===c?' selected':''}>${esc(c)}</option>`).join('')}</select></label>
+    <label class="f f-wide"><span>Nota privada (no sale en el PDF)</span><input data-k="note" value="${esc(x.note||'')}" placeholder="Ej: proveedor, nº de factura, qué incluye…"></label></div>`).join('');
 }
 function syncProject(){
   const p=S.project;
@@ -979,13 +988,17 @@ function renderBudget(){
     ${condText()?`<div class="q-cond" style="margin:10px 0;font-size:13px;line-height:1.45;opacity:.85"><b>Condiciones</b><br>${esc(condText()).replace(/\n/g,'<br>')}</div>`:''}
     <p class="small" style="margin:0">Así lo ve el cliente. Tu beneficio no aparece.</p></div>`;
   const ld=laborDetail();
+  const exList=S.extras.filter(x=>(+x.amount||0)>0||(x.name||'').trim());
+  const exRows=exList.map(x=>`<tr class="xrow"><td>${esc((x.name||'').trim()||'Sin nombre')}${x.cat?`<span class="xcat">${esc(x.cat)}</span>`:''}${(x.note||'').trim()?`<div class="xnote">${esc(x.note.trim())}</div>`:''}</td><td>${eur(+x.amount||0)}</td></tr>`).join('');
+  const byCat={};exList.forEach(x=>{const v=+x.amount||0;if(v>0){const c=x.cat||'Sin clasificar';byCat[c]=(byCat[c]||0)+v}});
+  const catLine=Object.keys(byCat).length>1?`<p class="small xcats">Por tipo: ${Object.keys(byCat).map(c=>esc(c)+' '+eur(byCat[c])).join(' · ')}</p>`:'';
   $('#shopCosts').innerHTML=`<h2>Tus cuentas</h2><p class="sub">Esta parte es solo para ti.</p>
     <table class="sum"><tr><td>Materiales (coste)</td><td>${eur(T.mats)}</td></tr>
       <tr><td>Mano de obra${ld?' ('+ld+')':''}</td><td>${eur(T.labor)}</td></tr>
-      <tr><td>Otros gastos</td><td>${eur(T.extras)}</td></tr>
+      <tr><td>Otros gastos</td><td>${eur(T.extras)}</td></tr>${exRows}
       <tr class="sub"><td>Coste total</td><td>${eur(T.cost)}</td></tr>
       <tr class="gain"><td>Beneficio (${n1(st.margin)} % sobre costes)</td><td>${eur(T.profit)}</td></tr>
-      <tr class="sub"><td>Base imponible</td><td>${eur(T.base)}</td></tr></table>`;
+      <tr class="sub"><td>Base imponible</td><td>${eur(T.base)}</td></tr></table>${catLine}`;
   if(!R.length){$('#shopTable').innerHTML='<p class="sub">Añade piezas en la pestaña Piezas y aquí aparecerá la lista.</p>';$('#cuts').innerHTML='<p class="sub">Todavía no hay cortes que mostrar.</p>';return}
   $('#shopTable').innerHTML=`<table class="tbl"><thead><tr><th>Material</th><th>Comprar</th><th>Aprovechamiento</th><th class="r">Precio</th><th class="r">Importe</th></tr></thead><tbody>`+
     R.map(x=>{
@@ -1202,7 +1215,7 @@ $$('.tab').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)));
 $('#tab-piezas').addEventListener('input',e=>{
   const t=e.target;
   if(t.dataset.p){S.project[t.dataset.p]=t.type==='checkbox'?t.checked:t.value;S.example=false;$('#exampleNote').hidden=true;touch();return}
-  const row=t.closest('[data-id]');if(!row)return;const k=t.dataset.k;if(!k||k==='mode'||k==='matId')return;
+  const row=t.closest('[data-id]');if(!row)return;const k=t.dataset.k;if(!k||k==='mode'||k==='matId'||k==='cat')return;
   if(row.classList.contains('line')){
     const l=S.lines.find(x=>x.id===row.dataset.id);if(!l)return;
     if(k==='name')l.name=t.value;
@@ -1211,13 +1224,14 @@ $('#tab-piezas').addEventListener('input',e=>{
     touch();
   }else{
     const list=row.dataset.list==='labor'?S.labor:S.extras,x=list.find(y=>y.id===row.dataset.id);if(!x)return;
-    if(k==='name')x.name=t.value;else x[k]=Math.max(0,parseNum(t.value));touch();
+    if(k==='name'||k==='note')x[k]=t.value;else x[k]=Math.max(0,parseNum(t.value));touch();
   }
 });
 $('#tab-piezas').addEventListener('change',e=>{
   const t=e.target;
   if(t.id==='p-unit'){S.unit=t.value;renderLines();touch();return}
   if(t.dataset.p){S.project[t.dataset.p]=t.type==='checkbox'?t.checked:t.value;touch();return}
+  if(t.dataset.k==='cat'){const x=S.extras.find(y=>y.id===t.closest('.mini').dataset.id);if(x){x.cat=t.value;touch()}return}
   if(t.dataset.k==='matId'){
     const l=S.lines.find(x=>x.id===t.closest('.line').dataset.id);l.matId=t.value;renderLines();touch();
   }else if(t.dataset.k==='mode'){
@@ -1244,7 +1258,7 @@ document.addEventListener('click',e=>{
   else if(a==='del-line'){S.lines=S.lines.filter(x=>x.id!==b.closest('.line').dataset.id);renderLines();touch()}
   else if(a==='add-labor-h'){S.labor.push({id:uid(),name:'',mode:'h',qty:0,price:0});renderSub();touch()}
   else if(a==='add-labor-u'){S.labor.push({id:uid(),name:'',mode:'u',qty:1,price:0});renderSub();touch()}
-  else if(a==='add-extra'){S.extras.push({id:uid(),name:'',amount:0});renderSub();touch()}
+  else if(a==='add-extra'){S.extras.push({id:uid(),name:'',amount:0,cat:'',note:''});renderSub();touch()}
   else if(a==='del-sub'){const r=b.closest('[data-id]'),k=r.dataset.list==='labor'?'labor':'extras';S[k]=S[k].filter(x=>x.id!==r.dataset.id);renderSub();touch()}
   else if(a==='new-budget')newBudget();
   else if(a==='open')openBudget(b.closest('.brow').dataset.id);
